@@ -20,7 +20,11 @@ class MyShortAnswer(BaseGameConfig):
     submit_nickname_button_selector = "xpath=/html/body/div/form/div/div/div/button"
 
 class Blooket(BaseGameConfig):
-    pass
+    uri="https://play.blooket.com/play"
+    code_input_xpath="/html/body/main/div/form/div[1]/div/div/input"
+    submit_code_button_selector = "xpath=/html/body/main/div/form/div[1]/div/button"
+    nickname_input_xpath="/html/body/div/div/div/div[2]/div/form/div[2]/div[1]/input"
+    submit_nickname_button_selector = "xpath=/html/body/div/div/div/div[2]/div/form/div[2]/div[2]"
 
 supported_games = {
     "kahoot": Kahoot,
