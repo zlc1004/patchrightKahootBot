@@ -1,0 +1,17 @@
+incorrect xpath /html/body/div/div[1]/div/div/div/div[3]/div[1]/div[1]/svg/g/g/g/g/g/g/path
+incorrect path html <path d="M39.99 12.621v14.736l14.736.001V39.99H39.99v14.736H27.359V39.99H12.62V27.359h14.736l.001-14.737H39.99z" transform="translate(6.316 6.316) rotate(-135 33.674 33.674)"></path>
+quiz type xpath /html/body/div/div[1]/div/div/div/div[2]/div[2]/div
+
+4 buttons xpath /html/body/div/div[1]/div/div/main/div[3]/form/div/div/div[1]
+
+code enter xpath //*[@id="game-input"]
+code submit xpath /html/body/div/div[1]/div/div/div[1]/div/div[2]/div[2]/main/div/form/button
+
+name enter xpath //*[@id="nickname"]
+name submit xpath /html/body/div/div[1]/div/div/div[1]/div/div[2]/main/div/form/button
+
+you are in xpath /html/body/div/div[1]/div/div/div/main/div[2]/h2/div/div[2]
+you are in html <div class="shadow-text__Text-sc-o7uc06-1 dbMFKG">You're in! See your nickname on screen?</div>
+
+game started xpath /html/body/div/div[1]/div/div/main/main/div[1]/div/div[2]
+game started html <div class="shadow-text__Text-sc-o7uc06-1 dbMFKG">Get Ready!</div>
