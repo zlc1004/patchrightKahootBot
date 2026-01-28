@@ -4,7 +4,7 @@ import string
 import asyncio
 from patchright.async_api import async_playwright
 
-import config
+from config import Kahoot as config
 
 def generate_hex_string(length):
     return ''.join(random.choices(string.hexdigits, k=length)).lower()
