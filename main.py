@@ -14,7 +14,7 @@ def generate_hex_string(length):
 async def run_client(join_code, browser):
     try:
         page = await browser.new_page()
-        await page.goto("https://kahoot.it")
+        await page.goto(game.uri)
 
         await page.wait_for_selector(f"xpath={game.code_input_xpath}", timeout=60000)
         await page.locator(f"xpath={game.code_input_xpath}").fill(join_code)
