@@ -4,6 +4,8 @@ import string
 import asyncio
 from patchright.async_api import async_playwright
 
+import config
+
 def generate_hex_string(length):
     return ''.join(random.choices(string.hexdigits, k=length)).lower()
 
@@ -12,27 +14,23 @@ async def run_client(join_code, browser):
         page = await browser.new_page()
         await page.goto("https://kahoot.it")
 
-        code_input_xpath = "//*[@id=\"game-input\"]"
-        await page.wait_for_selector(f"xpath={code_input_xpath}", timeout=60000)
-        await page.locator(f"xpath={code_input_xpath}").fill(join_code)
+        await page.wait_for_selector(f"xpath={config.code_input_xpath}", timeout=60000)
+        await page.locator(f"xpath={config.code_input_xpath}").fill(join_code)
         await page.wait_for_timeout(500)
 
-        submit_code_button_selector = "xpath=/html/body/div/div[1]/div/div/div[1]/div/div[2]/div[2]/main/div/form/button"
-        await page.locator(submit_code_button_selector).click()
+        await page.locator(config.submit_code_button_selector).click()
         await page.wait_for_timeout(500)
 
-        await page.wait_for_selector("xpath=//*[@id=\"nickname\"]")
+        await page.wait_for_selector(f"xpath={config.nickname_input_xpath}")
 
-        text_input_go_id = "nickname"
         random_hex_1 = generate_hex_string(5)
         random_hex_2 = generate_hex_string(5)
         text_to_type = f"{random_hex_1} {random_hex_2}"
 
-        await page.locator(f"id={text_input_go_id}").fill(text_to_type)
+        await page.locator(f"xpath={config.nickname_input_xpath}").fill(text_to_type)
         await page.wait_for_timeout(500)
 
-        hex_input_button_selector = "xpath=/html/body/div/div[1]/div/div/div[1]/div/div[2]/main/div/form/button"
-        await page.locator(hex_input_button_selector).click()
+        await page.locator(config.submit_nickname_button_selector).click()
         await page.wait_for_timeout(500)
     except Exception as e:
         print(f"An error occurred in a client: {e}")
