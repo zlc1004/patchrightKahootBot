@@ -4,7 +4,9 @@ import string
 import asyncio
 from patchright.async_api import async_playwright
 
-from config import Kahoot as config
+import config
+
+game=config.BaseGameConfig
 
 def generate_hex_string(length):
     return ''.join(random.choices(string.hexdigits, k=length)).lower()
@@ -14,23 +16,23 @@ async def run_client(join_code, browser):
         page = await browser.new_page()
         await page.goto("https://kahoot.it")
 
-        await page.wait_for_selector(f"xpath={config.code_input_xpath}", timeout=60000)
-        await page.locator(f"xpath={config.code_input_xpath}").fill(join_code)
+        await page.wait_for_selector(f"xpath={game.code_input_xpath}", timeout=60000)
+        await page.locator(f"xpath={game.code_input_xpath}").fill(join_code)
         await page.wait_for_timeout(500)
 
-        await page.locator(config.submit_code_button_selector).click()
+        await page.locator(game.submit_code_button_selector).click()
         await page.wait_for_timeout(500)
 
-        await page.wait_for_selector(f"xpath={config.nickname_input_xpath}")
+        await page.wait_for_selector(f"xpath={game.nickname_input_xpath}")
 
         random_hex_1 = generate_hex_string(5)
         random_hex_2 = generate_hex_string(5)
         text_to_type = f"{random_hex_1} {random_hex_2}"
 
-        await page.locator(f"xpath={config.nickname_input_xpath}").fill(text_to_type)
+        await page.locator(f"xpath={game.nickname_input_xpath}").fill(text_to_type)
         await page.wait_for_timeout(500)
 
-        await page.locator(config.submit_nickname_button_selector).click()
+        await page.locator(game.submit_nickname_button_selector).click()
         await page.wait_for_timeout(500)
     except Exception as e:
         print(f"An error occurred in a client: {e}")
@@ -39,6 +41,12 @@ async def run_client(join_code, browser):
             await page.close()
 
 async def main():
+    global game
+    game_choice = input(f"Please select a game from {','.join(config.supported_games.keys())}: ").strip().lower()
+    game = config.supported_games.get(game_choice)
+    if not game:
+        print("Unsupported game selected.")
+        return
     join_code = input("Please enter the code to join: ")
     num_clients_str = input("Please enter the number of clients to run: ")
     try:
