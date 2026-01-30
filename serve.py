@@ -31,7 +31,7 @@ ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "").lower().replace("@", "")
 admins = {ADMIN_USERNAME} if ADMIN_USERNAME else set()
 
 # Session storage
-# { session_id: { "browser": browser, "playwright": p, "game_name": str, "pin": str, "num_clients": int, "clients": list, "chat_id": int, "message_id": int } }
+# { session_id: { "browser": browser, "playwright": p, "game_name": str, "pin": str, "num_clients": int, "clients": list, "chat_id": int, "message_id": int, "last_update": float, "update_pending": bool } }
 sessions = {}
 
 # States
@@ -42,6 +42,11 @@ def is_admin(username):
     return username.lower().replace("@", "") in admins
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Start the global updater loop if not already running
+    if not context.application.bot_data.get("updater_running"):
+        context.application.bot_data["updater_running"] = True
+        asyncio.create_task(status_updater_loop(context))
+
     user = update.effective_user
     if not is_admin(user.username):
         await update.message.reply_text("You are not authorized to use this bot.")
@@ -101,7 +106,9 @@ async def run_session(session_id, game_name, pin, num_clients, chat_id, context)
             "clients": [{"id": i, "status": "Initializing"} for i in range(num_clients)],
             "start_time": time.time(),
             "chat_id": chat_id,
-            "message_id": None
+            "message_id": None,
+            "last_update": 0,
+            "update_pending": False
         }
         sessions[session_id] = session
 
@@ -181,6 +188,24 @@ def get_status_markup(session_id):
 async def update_status_message(session_id, context):
     if session_id not in sessions: return
     session = sessions[session_id]
+    
+    current_time = time.time()
+    # If we are within the 750ms window since the last update
+    if current_time - session["last_update"] < 0.75:
+        # Just mark that there is a newer state to be sent
+        session["update_pending"] = True
+        return
+
+    # Otherwise, update immediately
+    await _perform_update(session_id, context)
+
+async def _perform_update(session_id, context):
+    if session_id not in sessions: return
+    session = sessions[session_id]
+    
+    session["last_update"] = time.time()
+    session["update_pending"] = False
+    
     try:
         await context.bot.edit_message_text(
             chat_id=session["chat_id"],
@@ -191,6 +216,15 @@ async def update_status_message(session_id, context):
     except Exception as e:
         if "Message is not modified" not in str(e):
             logger.debug(f"Update status message error: {e}")
+
+async def status_updater_loop(context):
+    """Global loop to check all sessions for pending updates every 750ms."""
+    while True:
+        await asyncio.sleep(0.75)
+        for session_id in list(sessions.keys()):
+            session = sessions.get(session_id)
+            if session and session.get("update_pending"):
+                await _perform_update(session_id, context)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
