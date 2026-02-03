@@ -1,4 +1,3 @@
-
 import random
 import string
 import asyncio
@@ -6,10 +5,12 @@ from patchright.async_api import async_playwright
 
 import config
 
-game=config.BaseGameConfig
+game = config.BaseGameConfig
+
 
 def generate_hex_string(length):
-    return ''.join(random.choices(string.hexdigits, k=length)).lower()
+    return "".join(random.choices(string.hexdigits, k=length)).lower()
+
 
 async def run_client(join_code, browser, game_config=None):
     if game_config is None:
@@ -20,7 +21,9 @@ async def run_client(join_code, browser, game_config=None):
         page = await browser.new_page()
         await page.goto(game_config.uri)
 
-        await page.wait_for_selector(f"xpath={game_config.code_input_xpath}", timeout=60000)
+        await page.wait_for_selector(
+            f"xpath={game_config.code_input_xpath}", timeout=60000
+        )
         await page.locator(f"xpath={game_config.code_input_xpath}").fill(join_code)
         await page.wait_for_timeout(500)
 
@@ -33,7 +36,9 @@ async def run_client(join_code, browser, game_config=None):
         random_hex_2 = generate_hex_string(5)
         text_to_type = f"{random_hex_1} {random_hex_2}"
 
-        await page.locator(f"xpath={game_config.nickname_input_xpath}").fill(text_to_type)
+        await page.locator(f"xpath={game_config.nickname_input_xpath}").fill(
+            text_to_type
+        )
         await page.wait_for_timeout(500)
 
         await page.locator(game_config.submit_nickname_button_selector).click()
@@ -44,9 +49,14 @@ async def run_client(join_code, browser, game_config=None):
         if page and not page.is_closed():
             await page.close()
 
+
 async def main():
     global game
-    game_choice = input(f"Please select a game from {','.join(config.supported_games.keys())}: ").strip().lower()
+    game_choice = (
+        input(f"Please select a game from {','.join(config.supported_games.keys())}: ")
+        .strip()
+        .lower()
+    )
     game = config.supported_games.get(game_choice)
     if not game:
         print("Unsupported game selected.")
@@ -64,7 +74,14 @@ async def main():
         return
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch() # Launch browser once
+        browser = await p.chromium.launch(
+            args=[
+                "--use-fake-ui-for-media-stream",
+                "--allow-http-screen-capture",
+                "--enable-usermedia-screen-capturing",
+                "--auto-select-desktop-capture-source=Entire screen",
+            ]
+        )  # Launch browser once
 
         tasks = []
         for i in range(num_clients):
@@ -72,10 +89,13 @@ async def main():
             tasks.append(asyncio.create_task(run_client(join_code, browser)))
 
         await asyncio.gather(*tasks)
-        
-        input(f"All {num_clients} tabs launched in a single browser. Press Enter to close the script (browser will remain open until manually closed).")
+
+        input(
+            f"All {num_clients} tabs launched in a single browser. Press Enter to close the script (browser will remain open until manually closed)."
+        )
         # Keep the browser open until the user manually closes it
         # await browser.close() # Commented out to keep browser open
+
 
 if __name__ == "__main__":
     asyncio.run(main())

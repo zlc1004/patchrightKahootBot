@@ -4,6 +4,9 @@ class BaseGameConfig:
     submit_code_button_selector: str = ""
     nickname_input_xpath: str = ""
     submit_nickname_button_selector: str = ""
+    require_secondary_code: bool = False
+    secondary_code_input_xpath: str = ""
+    secondary_code_submit_button_selector: str = ""
 
 class Kahoot(BaseGameConfig):
     uri="https://kahoot.it"
@@ -26,8 +29,16 @@ class Blooket(BaseGameConfig):
     nickname_input_xpath="/html/body/div/div/div/div[2]/div/form/div[2]/div[1]/input"
     submit_nickname_button_selector = "xpath=/html/body/div/div/div/div[2]/div/form/div[2]/div[2]"
 
+class MagicSchoolAI(BaseGameConfig):
+    uri="https://student.magicschool.ai/s/join"
+    code_input_xpath="//*[@id=\"field2\"]"
+    submit_code_button_selector = "xpath=//*[@id=\"field1\"]"
+    nickname_input_xpath="//*[@id=\"field1\"]"
+    submit_nickname_button_selector = "xpath=/html/body/div[2]/div/button"
+
 supported_games = {
     "kahoot": Kahoot,
     "myshortanswer": MyShortAnswer,
-    "blooket": Blooket
+    "blooket": Blooket,
+    "magicschoolai": MagicSchoolAI
 }
