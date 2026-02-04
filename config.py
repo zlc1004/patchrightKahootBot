@@ -1,12 +1,15 @@
 class BaseGameConfig:
-    uri: str = ""
-    code_input_xpath: str = ""
-    submit_code_button_selector: str = ""
-    nickname_input_xpath: str = ""
-    submit_nickname_button_selector: str = ""
-    require_secondary_code: bool = False
-    secondary_code_input_xpath: str = ""
-    secondary_code_submit_button_selector: str = ""
+    uri: str = "" # The base URI for the game
+    code_input_xpath: str = "" # The XPath for the game code input field
+    submit_code_button_selector: str = "" # The selector for the submit code button
+    nickname_input_xpath: str = "" # The XPath for the nickname input field
+    submit_nickname_button_selector: str = "" # The selector for the submit nickname button
+    require_secondary_code: bool = False # Whether a secondary code is required
+    secondary_code_input_xpath: str = "" # The XPath for the secondary code input field
+    secondary_code_submit_button_selector: str = "" # The selector for the secondary code submit button
+    excute_additional_js: bool = False # Whether to execute additional JavaScript after joining
+    excute_additional_js_wait_xpath: str = "" # The XPath to wait to be visible for before executing additional JS
+    excute_additional_js_code: str = "" # Additional JavaScript to execute after joining
 
 class Kahoot(BaseGameConfig):
     uri="https://kahoot.it"

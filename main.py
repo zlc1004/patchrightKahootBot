@@ -43,6 +43,34 @@ async def run_client(join_code, browser, game_config=None):
 
         await page.locator(game_config.submit_nickname_button_selector).click()
         await page.wait_for_timeout(500)
+
+        if (
+            game_config.require_secondary_code
+            and game_config.secondary_code_input_xpath
+        ):
+            await page.wait_for_selector(
+                f"xpath={game_config.secondary_code_input_xpath}", timeout=60000
+            )
+            await page.locator(f"xpath={game_config.secondary_code_input_xpath}").fill(
+                join_code
+            )
+            await page.wait_for_timeout(500)
+            if game_config.secondary_code_submit_button_selector:
+                await page.locator(
+                    game_config.secondary_code_submit_button_selector
+                ).click()
+                await page.wait_for_timeout(500)
+
+        if game_config.excute_additional_js:
+            if game_config.excute_additional_js_wait_xpath:
+                await page.wait_for_selector(
+                    f"xpath={game_config.excute_additional_js_wait_xpath}",
+                    timeout=60000,
+                )
+            if game_config.excute_additional_js_code:
+                await page.evaluate(game_config.excute_additional_js_code)
+                await page.wait_for_timeout(500)
+
     except Exception as e:
         print(f"An error occurred in a client: {e}")
         # Optionally close the page if an error occurs to free up resources
