@@ -66,11 +66,46 @@ class MagicSchoolAI(BaseGameConfig):
     submit_nickname_button_selector = "xpath=/html/body/div[2]/div/button"
 
 
+def parse_netscape_cookies(cookie_data):
+    cookies = []
+    if not cookie_data or cookie_data.strip().lower() == "none":
+        return None
+    lines = cookie_data.strip().split("\n")
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("HttpOnly"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            domain = parts[0]
+            flag = parts[1]
+            path = parts[2]
+            secure = parts[3]
+            expiration = parts[4]
+            name = parts[5]
+            value = parts[6]
+            cookies.append(
+                {
+                    "name": name,
+                    "value": value,
+                    "domain": domain,
+                    "path": path,
+                    "secure": secure.lower() == "true",
+                    "expires": int(expiration) if expiration.isdigit() else None,
+                }
+            )
+    return cookies if cookies else None
+
+
 class GoogleForms(BaseGameConfig):
     uri = ""
     use_custom_run_client = True
     custom_run_client_custom_kargs = [
-        {"prompt": "Enter Google Forms URL: ", "key": "form_url"}
+        {"prompt": "Enter Google Forms URL: ", "key": "form_url"},
+        {
+            "prompt": "Enter Netscape cookie file content (or 'none'): ",
+            "key": "cookies",
+        },
     ]
 
     @classmethod
@@ -83,6 +118,9 @@ class GoogleForms(BaseGameConfig):
         if not form_url.startswith("http"):
             form_url = "https://" + form_url
 
+        cookie_data = kwargs.get("cookies", "")
+        cookies = parse_netscape_cookies(cookie_data)
+
         def generate_random_text(min_len=5, max_len=50):
             length = random.randint(min_len, max_len)
             return "".join(
@@ -92,6 +130,11 @@ class GoogleForms(BaseGameConfig):
         page = None
         try:
             page = await browser.new_page()
+            if cookies:
+                try:
+                    await page.context.add_cookies(cookies)
+                except Exception:
+                    pass
             await page.goto(form_url)
             await page.wait_for_load_state("networkidle")
 
