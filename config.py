@@ -66,35 +66,37 @@ class MagicSchoolAI(BaseGameConfig):
     submit_nickname_button_selector = "xpath=/html/body/div[2]/div/button"
 
 
-def parse_netscape_cookies(cookie_data):
-    cookies = []
+def parse_json_cookies(cookie_data):
+    import json
+
     if not cookie_data or cookie_data.strip().lower() == "none":
         return None
-    lines = cookie_data.strip().split("\n")
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#") or line.startswith("HttpOnly"):
-            continue
-        parts = line.split("\t")
-        if len(parts) >= 7:
-            domain = parts[0]
-            flag = parts[1]
-            path = parts[2]
-            secure = parts[3]
-            expiration = parts[4]
-            name = parts[5]
-            value = parts[6]
-            cookies.append(
-                {
-                    "name": name,
-                    "value": value,
-                    "domain": domain,
-                    "path": path,
-                    "secure": secure.lower() == "true",
-                    "expires": int(expiration) if expiration.isdigit() else None,
-                }
-            )
-    return cookies if cookies else None
+
+    try:
+        raw_cookies = json.loads(cookie_data)
+        cookies = []
+        for cookie in raw_cookies:
+            cookie_entry = {
+                "name": cookie.get("name", ""),
+                "value": cookie.get("value", ""),
+                "domain": cookie.get("domain", ""),
+                "path": cookie.get("path", "/"),
+                "secure": cookie.get("secure", False),
+            }
+            if cookie.get("expirationDate"):
+                cookie_entry["expires"] = cookie.get("expirationDate")
+            elif not cookie.get("session", False):
+                cookie_entry["expires"] = cookie.get("expirationDate")
+
+            if cookie.get("httpOnly"):
+                cookie_entry["httpOnly"] = cookie.get("httpOnly")
+            if cookie.get("sameSite"):
+                cookie_entry["sameSite"] = cookie.get("sameSite")
+
+            cookies.append(cookie_entry)
+        return cookies if cookies else None
+    except json.JSONDecodeError:
+        return None
 
 
 class GoogleForms(BaseGameConfig):
@@ -103,7 +105,7 @@ class GoogleForms(BaseGameConfig):
     custom_run_client_custom_kargs = [
         {"prompt": "Enter Google Forms URL: ", "key": "form_url"},
         {
-            "prompt": "Enter Netscape cookie file content (or 'none'): ",
+            "prompt": "Enter JSON cookies (send as one message or multiple, end with ]): ",
             "key": "cookies",
         },
     ]
@@ -119,7 +121,7 @@ class GoogleForms(BaseGameConfig):
             form_url = "https://" + form_url
 
         cookie_data = kwargs.get("cookies", "")
-        cookies = parse_netscape_cookies(cookie_data)
+        cookies = parse_json_cookies(cookie_data)
 
         def generate_random_text(min_len=5, max_len=50):
             length = random.randint(min_len, max_len)

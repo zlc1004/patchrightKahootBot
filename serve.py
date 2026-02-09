@@ -71,11 +71,12 @@ async def game_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_name = query.data
     context.user_data["game_choice"] = game_name
     game_class = config.supported_games[game_name]
+    context.user_data["custom_kwargs"] = {}
 
     if game_class.use_custom_run_client and game_class.custom_run_client_custom_kargs:
         kargs_list = game_class.custom_run_client_custom_kargs
         context.user_data["custom_kwargs_queue"] = list(kargs_list)
-        context.user_data["custom_kwargs"] = {}
+        context.user_data["custom_kwargs_pending"] = None
 
         first_karg = kargs_list[0]
         await query.edit_message_text(
@@ -95,9 +96,28 @@ async def game_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def custom_kwarg_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kwarg = context.user_data["custom_kwargs_queue"].pop(0)
-    key = kwarg.get("key", "value")
-    context.user_data["custom_kwargs"][key] = update.message.text
+    current_kwarg = (
+        context.user_data["custom_kwargs_queue"][0]
+        if context.user_data["custom_kwargs_queue"]
+        else None
+    )
+    key = current_kwarg.get("key", "value") if current_kwarg else "value"
+    is_json = key == "cookies"
+
+    if is_json and context.user_data.get("custom_kwargs_pending"):
+        context.user_data["custom_kwargs_pending"] += " " + update.message.text
+    else:
+        context.user_data["custom_kwargs_pending"] = update.message.text
+
+    content = context.user_data["custom_kwargs_pending"]
+
+    if is_json and not content.strip().endswith("]"):
+        await update.message.reply_text("Waiting for complete JSON (end with ])...")
+        return ENTERING_CUSTOM_KWARGS
+
+    context.user_data["custom_kwargs"][key] = content
+    context.user_data["custom_kwargs_pending"] = None
+    context.user_data["custom_kwargs_queue"].pop(0)
 
     if context.user_data["custom_kwargs_queue"]:
         next_karg = context.user_data["custom_kwargs_queue"][0]
@@ -122,7 +142,6 @@ async def clients_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTERING_CLIENTS
 
     game_choice = context.user_data["game_choice"]
-    game_class = config.supported_games[game_choice]
     pin = context.user_data.get("pin", "")
     custom_kwargs = context.user_data.get("custom_kwargs", {})
 
