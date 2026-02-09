@@ -66,48 +66,11 @@ class MagicSchoolAI(BaseGameConfig):
     submit_nickname_button_selector = "xpath=/html/body/div[2]/div/button"
 
 
-def parse_json_cookies(cookie_data):
-    import json
-
-    if not cookie_data or cookie_data.strip().lower() == "none":
-        return None
-
-    try:
-        raw_cookies = json.loads(cookie_data)
-        cookies = []
-        for cookie in raw_cookies:
-            cookie_entry = {
-                "name": cookie.get("name", ""),
-                "value": cookie.get("value", ""),
-                "domain": cookie.get("domain", ""),
-                "path": cookie.get("path", "/"),
-                "secure": cookie.get("secure", False),
-            }
-            if cookie.get("expirationDate"):
-                cookie_entry["expires"] = cookie.get("expirationDate")
-            elif not cookie.get("session", False):
-                cookie_entry["expires"] = cookie.get("expirationDate")
-
-            if cookie.get("httpOnly"):
-                cookie_entry["httpOnly"] = cookie.get("httpOnly")
-            if cookie.get("sameSite"):
-                cookie_entry["sameSite"] = cookie.get("sameSite")
-
-            cookies.append(cookie_entry)
-        return cookies if cookies else None
-    except json.JSONDecodeError:
-        return None
-
-
 class GoogleForms(BaseGameConfig):
     uri = ""
     use_custom_run_client = True
     custom_run_client_custom_kargs = [
         {"prompt": "Enter Google Forms URL: ", "key": "form_url"},
-        {
-            "prompt": "Enter JSON cookies (send as one message or multiple, end with ]): ",
-            "key": "cookies",
-        },
     ]
 
     @classmethod
@@ -120,9 +83,6 @@ class GoogleForms(BaseGameConfig):
         if not form_url.startswith("http"):
             form_url = "https://" + form_url
 
-        cookie_data = kwargs.get("cookies", "")
-        cookies = parse_json_cookies(cookie_data)
-
         def generate_random_text(min_len=5, max_len=50):
             length = random.randint(min_len, max_len)
             return "".join(
@@ -132,11 +92,6 @@ class GoogleForms(BaseGameConfig):
         page = None
         try:
             page = await browser.new_page()
-            if cookies:
-                try:
-                    await page.context.add_cookies(cookies)
-                except Exception:
-                    pass
             await page.goto(form_url)
             await page.wait_for_load_state("networkidle")
 

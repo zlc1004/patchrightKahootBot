@@ -96,28 +96,9 @@ async def game_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def custom_kwarg_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    current_kwarg = (
-        context.user_data["custom_kwargs_queue"][0]
-        if context.user_data["custom_kwargs_queue"]
-        else None
-    )
-    key = current_kwarg.get("key", "value") if current_kwarg else "value"
-    is_json = key == "cookies"
-
-    if is_json and context.user_data.get("custom_kwargs_pending"):
-        context.user_data["custom_kwargs_pending"] += " " + update.message.text
-    else:
-        context.user_data["custom_kwargs_pending"] = update.message.text
-
-    content = context.user_data["custom_kwargs_pending"]
-
-    if is_json and not content.strip().endswith("]"):
-        await update.message.reply_text("Waiting for complete JSON (end with ])...")
-        return ENTERING_CUSTOM_KWARGS
-
-    context.user_data["custom_kwargs"][key] = content
-    context.user_data["custom_kwargs_pending"] = None
-    context.user_data["custom_kwargs_queue"].pop(0)
+    kwarg = context.user_data["custom_kwargs_queue"].pop(0)
+    key = kwarg.get("key", "value")
+    context.user_data["custom_kwargs"][key] = update.message.text
 
     if context.user_data["custom_kwargs_queue"]:
         next_karg = context.user_data["custom_kwargs_queue"][0]
