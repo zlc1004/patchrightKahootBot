@@ -34,7 +34,7 @@ admins = {ADMIN_USERNAME} if ADMIN_USERNAME else set()
 sessions = {}
 
 # States
-SELECTING_GAME, ENTERING_PIN, ENTERING_CLIENTS = range(3)
+SELECTING_GAME, ENTERING_CUSTOM_KWARGS, ENTERING_PIN, ENTERING_CLIENTS = range(4)
 
 
 def is_admin(username):
@@ -68,11 +68,44 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def game_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    context.user_data["game_choice"] = query.data
-    await query.edit_message_text(
-        text=f"Selected {query.data.capitalize()}. Please enter the game PIN:"
-    )
-    return ENTERING_PIN
+    game_name = query.data
+    context.user_data["game_choice"] = game_name
+    game_class = config.supported_games[game_name]
+
+    if game_class.use_custom_run_client and game_class.custom_run_client_custom_kargs:
+        kargs_list = game_class.custom_run_client_custom_kargs
+        context.user_data["custom_kwargs_queue"] = list(kargs_list)
+        context.user_data["custom_kwargs"] = {}
+
+        first_karg = kargs_list[0]
+        await query.edit_message_text(
+            text=f"Selected {game_name.capitalize()}. {first_karg.get('prompt', 'Enter value:')}"
+        )
+        return ENTERING_CUSTOM_KWARGS
+    elif game_class.use_custom_run_client:
+        await query.edit_message_text(
+            text=f"Selected {game_name.capitalize()}. Please enter the number of clients:"
+        )
+        return ENTERING_CLIENTS
+    else:
+        await query.edit_message_text(
+            text=f"Selected {game_name.capitalize()}. Please enter the game PIN:"
+        )
+        return ENTERING_PIN
+
+
+async def custom_kwarg_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kwarg = context.user_data["custom_kwargs_queue"].pop(0)
+    key = kwarg.get("key", "value")
+    context.user_data["custom_kwargs"][key] = update.message.text
+
+    if context.user_data["custom_kwargs_queue"]:
+        next_karg = context.user_data["custom_kwargs_queue"][0]
+        await update.message.reply_text(text=next_karg.get("prompt", "Enter value:"))
+        return ENTERING_CUSTOM_KWARGS
+    else:
+        await update.message.reply_text("Please enter the number of clients:")
+        return ENTERING_CLIENTS
 
 
 async def pin_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -89,24 +122,35 @@ async def clients_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTERING_CLIENTS
 
     game_choice = context.user_data["game_choice"]
-    pin = context.user_data["pin"]
+    game_class = config.supported_games[game_choice]
+    pin = context.user_data.get("pin", "")
+    custom_kwargs = context.user_data.get("custom_kwargs", {})
 
     session_id = f"{update.effective_chat.id}_{int(time.time())}"
     await update.message.reply_text(
-        f"Launching {num_clients} clients for {game_choice.capitalize()} (PIN: {pin})..."
+        f"Launching {num_clients} clients for {game_choice.capitalize()}..."
     )
 
-    # Start the session in the background
     asyncio.create_task(
         run_session(
-            session_id, game_choice, pin, num_clients, update.effective_chat.id, context
+            session_id,
+            game_choice,
+            pin,
+            num_clients,
+            update.effective_chat.id,
+            context,
+            custom_kwargs,
         )
     )
 
     return ConversationHandler.END
 
 
-async def run_session(session_id, game_name, pin, num_clients, chat_id, context):
+async def run_session(
+    session_id, game_name, pin, num_clients, chat_id, context, custom_kwargs=None
+):
+    if custom_kwargs is None:
+        custom_kwargs = {}
     game_class = config.supported_games[game_name]
 
     try:
@@ -126,6 +170,7 @@ async def run_session(session_id, game_name, pin, num_clients, chat_id, context)
             "game_name": game_name,
             "pin": pin,
             "num_clients": num_clients,
+            "custom_kwargs": custom_kwargs,
             "clients": [
                 {"id": i, "status": "Initializing"} for i in range(num_clients)
             ],
@@ -150,7 +195,10 @@ async def run_session(session_id, game_name, pin, num_clients, chat_id, context)
             await update_status_message(session_id, context)
 
             try:
-                await main.run_client(pin, browser, game_class)
+                if game_class.use_custom_run_client:
+                    await game_class.run_client(pin, browser, **custom_kwargs)
+                else:
+                    await main.run_client(pin, browser, game_class)
                 session["clients"][client_idx]["status"] = "Joined ✅"
             except Exception as e:
                 session["clients"][client_idx]["status"] = f"Error ❌"
@@ -203,12 +251,16 @@ def get_status_text(session_id):
     session = sessions[session_id]
     lines = [
         f"🎮 Game: {session['game_name'].capitalize()}",
-        f"🔢 PIN: {session['pin']}",
         f"👥 Clients: {session['num_clients']}",
-        "----------------",
     ]
+    if session.get("pin"):
+        lines.append(f"🔢 PIN: {session['pin']}")
+    if session.get("custom_kwargs"):
+        for key, value in session["custom_kwargs"].items():
+            lines.append(f"📝 {key}: {value}")
+    lines.append("----------------")
     for client in session["clients"]:
-        lines.append(f"Client {client['id']+1}: {client['status']}")
+        lines.append(f"Client {client['id'] + 1}: {client['status']}")
     return "\n".join(lines)
 
 
@@ -308,6 +360,9 @@ def main_bot():
         entry_points=[CommandHandler("start", start)],
         states={
             SELECTING_GAME: [CallbackQueryHandler(game_selected)],
+            ENTERING_CUSTOM_KWARGS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, custom_kwarg_entered)
+            ],
             ENTERING_PIN: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, pin_entered)
             ],

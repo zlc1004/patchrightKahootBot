@@ -89,7 +89,19 @@ async def main():
     if not game:
         print("Unsupported game selected.")
         return
-    join_code = input("Please enter the code to join: ")
+
+    custom_kwargs = {}
+    if game.use_custom_run_client and game.custom_run_client_custom_kargs:
+        for karg in game.custom_run_client_custom_kargs:
+            prompt = karg.get("prompt", f"Enter {karg.get('key', 'value')}: ")
+            value = input(prompt).strip()
+            custom_kwargs[karg.get("key", "value")] = value
+
+    if game.use_custom_run_client:
+        join_code = custom_kwargs.get("code", input("Enter code: ").strip())
+    else:
+        join_code = input("Please enter the code to join: ").strip()
+
     num_clients_str = input("Please enter the number of clients to run: ")
     try:
         num_clients = int(num_clients_str)
@@ -109,20 +121,24 @@ async def main():
                 "--enable-usermedia-screen-capturing",
                 "--auto-select-desktop-capture-source=Entire screen",
             ]
-        )  # Launch browser once
+        )
 
         tasks = []
         for i in range(num_clients):
-            # No delay here, as browser.new_page() is fast, and the navigation/interactions have delays
-            tasks.append(asyncio.create_task(run_client(join_code, browser)))
+            if game.use_custom_run_client:
+                tasks.append(
+                    asyncio.create_task(
+                        game.run_client(join_code, browser, **custom_kwargs)
+                    )
+                )
+            else:
+                tasks.append(asyncio.create_task(run_client(join_code, browser)))
 
         await asyncio.gather(*tasks)
 
         input(
             f"All {num_clients} tabs launched in a single browser. Press Enter to close the script (browser will remain open until manually closed)."
         )
-        # Keep the browser open until the user manually closes it
-        # await browser.close() # Commented out to keep browser open
 
 
 if __name__ == "__main__":
