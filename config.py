@@ -71,6 +71,8 @@ class GoogleForms(BaseGameConfig):
     use_custom_run_client = True
     custom_run_client_custom_kargs = [
         {"prompt": "Enter Google Forms URL: ", "key": "form_url"},
+        {"prompt": "Enter cookies JSON (part 1/2): ", "key": "cookies1"},
+        {"prompt": "Enter cookies JSON (part 2/2): ", "key": "cookies2"},
     ]
 
     @classmethod
@@ -78,10 +80,16 @@ class GoogleForms(BaseGameConfig):
         import random
         import string
         import asyncio
+        import json
 
         form_url = kwargs.get("form_url", code)
         if not form_url.startswith("http"):
             form_url = "https://" + form_url
+
+        c1 = kwargs.get("cookies1", "")
+        c2 = kwargs.get("cookies2", "")
+        combined = (c1 + c2).strip()
+        cookies = cls._parse_cookies(combined, json)
 
         def generate_random_text(min_len=5, max_len=50):
             length = random.randint(min_len, max_len)
@@ -92,6 +100,11 @@ class GoogleForms(BaseGameConfig):
         page = None
         try:
             page = await browser.new_page()
+            if cookies:
+                try:
+                    await page.context.add_cookies(cookies)
+                except Exception:
+                    pass
             await page.goto(form_url)
             await page.wait_for_load_state("networkidle")
 
@@ -146,6 +159,173 @@ class GoogleForms(BaseGameConfig):
             if page and not page.is_closed():
                 await page.close()
 
+    @staticmethod
+    def _parse_cookies(cookie_data, json_module=None):
+        if (
+            not cookie_data
+            or cookie_data.strip().lower() == "none"
+            or cookie_data.strip() == "[]"
+        ):
+            return None
+        try:
+            if json_module is None:
+                import json
+
+                json_module = json
+            raw = json_module.loads(cookie_data)
+            if not raw:
+                return None
+            cookies = []
+            for c in raw:
+                if isinstance(c, dict):
+                    cookie = {
+                        "name": c.get("n") or c.get("name", ""),
+                        "value": c.get("v") or c.get("value", ""),
+                        "domain": c.get("d") or c.get("domain", ""),
+                        "path": c.get("p") or c.get("path", "/"),
+                    }
+                    if c.get("s") == 1 or c.get("secure"):
+                        cookie["secure"] = True
+                    exp = c.get("e") or c.get("expirationDate")
+                    if exp:
+                        cookie["expires"] = exp
+                    cookies.append(cookie)
+            return cookies if cookies else None
+        except Exception:
+            return None
+        try:
+            if json_module is None:
+                import json
+
+                json_module = json
+            raw = json_module.loads(cookie_data)
+            if not raw:
+                return None
+            cookies = []
+            for c in raw:
+                if isinstance(c, dict):
+                    cookie = {
+                        "name": c.get("n") or c.get("name", ""),
+                        "value": c.get("v") or c.get("value", ""),
+                        "domain": c.get("d") or c.get("domain", ""),
+                        "path": c.get("p") or c.get("path", "/"),
+                    }
+                    if c.get("s") == 1 or c.get("secure"):
+                        cookie["secure"] = True
+                    exp = c.get("e") or c.get("expirationDate")
+                    if exp:
+                        cookie["expires"] = exp
+                    cookies.append(cookie)
+            return cookies if cookies else None
+        except Exception:
+            return None
+        try:
+            raw = json.loads(cookie_data)
+            if not raw:
+                return None
+            cookies = []
+            for c in raw:
+                if isinstance(c, dict):
+                    cookie = {
+                        "name": c.get("n") or c.get("name", ""),
+                        "value": c.get("v") or c.get("value", ""),
+                        "domain": c.get("d") or c.get("domain", ""),
+                        "path": c.get("p") or c.get("path", "/"),
+                    }
+                    if c.get("s") == 1 or c.get("secure"):
+                        cookie["secure"] = True
+                    exp = c.get("e") or c.get("expirationDate")
+                    if exp:
+                        cookie["expires"] = exp
+                    cookies.append(cookie)
+            return cookies if cookies else None
+        except json.JSONDecodeError:
+            return None
+
+
+class LoginProvider:
+    name: str = ""
+    login_url: str = ""
+    email_input_xpath: str = ""
+    password_input_xpath: str = ""
+    next_button_text: str = ""
+    create_account_xpath: str = ""
+
+    @classmethod
+    async def login(cls, browser_context, page, email, password):
+        pass
+
+
+class GoogleLogin(LoginProvider):
+    name = "Google"
+    login_url = "https://accounts.google.com/signin"
+    email_input_xpath = '//input[@type="email"]'
+    password_input_xpath = '//input[@type="password"]'
+    next_button_text = "Next"
+
+    @classmethod
+    async def login(cls, browser_context, page, email, password):
+        import asyncio
+
+        await page.goto(cls.login_url)
+        await page.wait_for_load_state("networkidle")
+
+        email_input = page.locator(cls.email_input_xpath)
+        for _ in range(10):
+            if await email_input.count() > 0:
+                try:
+                    await email_input.fill(email)
+                    break
+                except:
+                    await asyncio.sleep(0.5)
+            else:
+                await asyncio.sleep(0.5)
+
+        await asyncio.sleep(0.5)
+
+        next_btn = page.get_by_role("button", name=cls.next_button_text)
+        for _ in range(10):
+            if await next_btn.count() > 0:
+                try:
+                    await next_btn.click()
+                    break
+                except:
+                    await asyncio.sleep(0.5)
+            else:
+                await asyncio.sleep(0.5)
+
+        await asyncio.sleep(1.5)
+
+        password_input = page.locator(cls.password_input_xpath)
+        for _ in range(10):
+            if await password_input.count() > 0:
+                try:
+                    await password_input.fill(password)
+                    break
+                except:
+                    await asyncio.sleep(0.5)
+            else:
+                await asyncio.sleep(0.5)
+
+        await asyncio.sleep(0.5)
+
+        next_btn = page.get_by_role("button", name=cls.next_button_text)
+        for _ in range(10):
+            if await next_btn.count() > 0:
+                try:
+                    await next_btn.click()
+                    break
+                except:
+                    await asyncio.sleep(0.5)
+            else:
+                await asyncio.sleep(0.5)
+
+        await asyncio.sleep(1.0)
+
+
+login_providers = {
+    "google": GoogleLogin,
+}
 
 supported_games = {
     "kahoot": Kahoot,
