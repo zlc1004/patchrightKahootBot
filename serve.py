@@ -415,7 +415,7 @@ async def getstate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         ua = UserAgent()
-        user_agent = ua.chrome
+        user_agent = ua["Chrome"]
 
         p = await async_playwright().start()
         browser = await p.chromium.launch(
@@ -640,85 +640,113 @@ async def getstate_browser_handler(update: Update, context: ContextTypes.DEFAULT
             session["message_id"] = msg.message_id
 
         elif "_find_" in data:
-            elements = []
-
-            buttons = page.locator("button")
-            btn_count = await buttons.count()
-            for i in range(min(btn_count, 15)):
-                try:
-                    txt = await buttons.nth(i).inner_text()
-                    if txt:
-                        elements.append(f"[Button] {txt[:30]}")
-                except:
-                    pass
-
-            links = page.locator("a")
-            link_count = await links.count()
-            for i in range(min(link_count, 15)):
-                try:
-                    txt = await links.nth(i).inner_text()
-                    if txt:
-                        elements.append(f"[Link] {txt[:30]}")
-                except:
-                    pass
-
-            inputs = page.locator(
-                "input[type='text'],input[type='email'],input[type='password']"
-            )
-            inp_count = await inputs.count()
-            for i in range(min(inp_count, 10)):
-                try:
-                    ph = await inputs.nth(i).get_attribute("placeholder")
-                    name = await inputs.nth(i).get_attribute("name")
-                    id_ = await inputs.nth(i).get_attribute("id")
-                    label = ph or name or id_ or f"input#{i}"
-                    elements.append(f"[Input] {label[:30]}")
-                except:
-                    pass
-
-            text_content = await page.evaluate(
-                """() => {
-                const texts = [];
-                document.querySelectorAll('h1,h2,h3,h4,p,span,label').forEach(el => {
-                    const t = el.innerText.trim().substring(0, 25);
-                    if (t && t.length > 2 && !texts.includes(t)) texts.push(t);
-                });
-                return texts.slice(0, 10);
-            }"""
-            )
-            for t in text_content:
-                elements.append(f"[Text] {t}")
-
-            if not elements:
-                elements = ["No interactive elements found"]
-
-            elements_list = "\n".join(elements[:25])
-            full_text = f"Found {len(elements)} elements:\n\n{elements_list}\n\nReply with number or XPath:"
-
-            keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "🔄 Refresh", callback_data=f"gs_find_{session_id}"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🔙 Back", callback_data=f"gs_back_{session_id}"
-                    )
-                ],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
             try:
-                await query.delete_message()
-            except:
-                pass
-            msg = await context.bot.send_message(
-                chat_id=session["chat_id"],
-                text=full_text,
-                reply_markup=reply_markup,
-            )
-            session["message_id"] = msg.message_id
+                elements = []
+                element_types = []
+
+                buttons = page.locator("button")
+                btn_count = await buttons.count()
+                for i in range(min(btn_count, 10)):
+                    try:
+                        txt = await buttons.nth(i).inner_text()
+                        if txt and txt.strip():
+                            elements.append(("button", i, txt.strip()))
+                    except:
+                        pass
+
+                links = page.locator("a")
+                link_count = await links.count()
+                for i in range(min(link_count, 10)):
+                    try:
+                        txt = await links.nth(i).inner_text()
+                        if txt and txt.strip():
+                            elements.append(("link", i, txt.strip()))
+                    except:
+                        pass
+
+                inputs = page.locator("input")
+                inp_count = await inputs.count()
+                for i in range(min(inp_count, 8)):
+                    try:
+                        ph = await inputs.nth(i).get_attribute("placeholder")
+                        name = await inputs.nth(i).get_attribute("name")
+                        id_ = await inputs.nth(i).get_attribute("id")
+                        label = ph or name or id_ or f"input#{i}"
+                        if label:
+                            elements.append(("input", i, label))
+                    except:
+                        pass
+
+                text_content = await page.evaluate("""() => {
+                    const texts = [];
+                    document.querySelectorAll('div,span,p,h1,h2,h3,h4,label').forEach(el => {
+                        const t = el.innerText?.trim();
+                        if (t && t.length > 1 && t.length < 50 && !texts.includes(t)) texts.push(t);
+                    });
+                    return texts.slice(0, 10);
+                }""")
+                for t in text_content:
+                    elements.append(("text", -1, t))
+
+                if not elements:
+                    elements_list = "No elements found. Try navigating to a page first."
+                else:
+                    numbered_elements = []
+                    for idx, (type_, i, txt) in enumerate(elements[:25], 1):
+                        type_label = {
+                            "button": "Btn",
+                            "link": "Link",
+                            "input": "In",
+                            "text": "Tx",
+                        }.get(type_, "??")
+                        numbered_elements.append(f"{idx}. [{type_label}] {txt[:25]}")
+                    elements_list = "\n".join(numbered_elements)
+
+                full_text = f"Found {len(elements)} elements:\n\n{elements_list}\n\nReply with number:"
+
+                keyboard = [
+                    [
+                        InlineKeyboardButton(
+                            "🔄 Refresh", callback_data=f"gs_find_{session_id}"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🔙 Back", callback_data=f"gs_back_{session_id}"
+                        )
+                    ],
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+                try:
+                    await query.delete_message()
+                except:
+                    pass
+                msg = await context.bot.send_message(
+                    chat_id=session["chat_id"],
+                    text=full_text[:4000],
+                    reply_markup=reply_markup,
+                )
+                session["message_id"] = msg.message_id
+            except Exception as e:
+                try:
+                    await query.delete_message()
+                except:
+                    pass
+                msg = await context.bot.send_message(
+                    chat_id=session["chat_id"],
+                    text=f"Error finding elements: {e}\n\nClick Back to return.",
+                    reply_markup=InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton(
+                                    "🔙 Back", callback_data=f"gs_back_{session_id}"
+                                )
+                            ]
+                        ]
+                    ),
+                )
+                session["message_id"] = msg.message_id
 
         elif "_save_" in data:
             try:
@@ -853,8 +881,11 @@ async def getstate_url_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
     session = getstate_sessions[session_id]
     page = session["page"]
 
-    url = update.message.text.strip()
-    if not url.startswith("http"):
+    url = update.message.text.strip().lower()
+
+    if url == "about:blank" or url == "blank":
+        url = "about:blank"
+    elif not url.startswith("http"):
         url = "https://" + url
 
     await page.goto(url)
@@ -878,14 +909,14 @@ async def getstate_click_input(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         if user_input.isdigit():
             idx = int(user_input) - 1
-            elements = []
 
+            elements = []
             buttons = page.locator("button")
             for i in range(await buttons.count()):
                 try:
                     txt = await buttons.nth(i).inner_text()
-                    if txt:
-                        elements.append(("button", i, txt))
+                    if txt and txt.strip():
+                        elements.append(("button", i, txt.strip()))
                 except:
                     pass
 
@@ -893,8 +924,20 @@ async def getstate_click_input(update: Update, context: ContextTypes.DEFAULT_TYP
             for i in range(await links.count()):
                 try:
                     txt = await links.nth(i).inner_text()
-                    if txt:
-                        elements.append(("link", i, txt))
+                    if txt and txt.strip():
+                        elements.append(("link", i, txt.strip()))
+                except:
+                    pass
+
+            inputs = page.locator("input")
+            for i in range(await inputs.count()):
+                try:
+                    ph = await inputs.nth(i).get_attribute("placeholder")
+                    name = await inputs.nth(i).get_attribute("name")
+                    id_ = await inputs.nth(i).get_attribute("id")
+                    label = ph or name or id_ or f"input#{i}"
+                    if label:
+                        elements.append(("input", i, label))
                 except:
                     pass
 
@@ -902,20 +945,38 @@ async def getstate_click_input(update: Update, context: ContextTypes.DEFAULT_TYP
                 type_, i, txt = elements[idx]
                 if type_ == "button":
                     await buttons.nth(i).click()
-                else:
+                elif type_ == "link":
                     await links.nth(i).click()
+                elif type_ == "input":
+                    await inputs.nth(i).click()
+                await page.wait_for_load_state("networkidle")
+                await update.message.reply_text(f"Clicked: {txt[:30]}")
+            else:
+                await update.message.reply_text(
+                    f"Invalid number {user_input}. Available: 1-{len(elements)}"
+                )
+                return ConversationHandler.END
         else:
             locator = page.locator(user_input)
             if await locator.count() > 0:
                 await locator.first.click()
+                await page.wait_for_load_state("networkidle")
+                await update.message.reply_text(f"Clicked: {user_input}")
             else:
-                await page.locator(f"xpath={user_input}").first.click()
-
-        await page.wait_for_load_state("networkidle")
-        await update.message.reply_text("Clicked!")
+                xpath_locator = page.locator(f"xpath={user_input}")
+                if await xpath_locator.count() > 0:
+                    await xpath_locator.first.click()
+                    await page.wait_for_load_state("networkidle")
+                    await update.message.reply_text(f"Clicked: {user_input}")
+                else:
+                    await update.message.reply_text(
+                        f"Element '{user_input}' not found."
+                    )
+                    return ConversationHandler.END
 
     except Exception as e:
         await update.message.reply_text(f"Click failed: {e}")
+        return ConversationHandler.END
 
     return await getstate_browser_send_screenshot(update, context, session_id)
 
