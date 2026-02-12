@@ -1,7 +1,12 @@
 services:
-  bot:
-    build: .
-    volumes:
-      - ./states:/app/states
+  serve:
+    build:
+      context: .
     env_file:
       - .env
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+    restart: always
+    volumes:
+      - ./states:/app/states
