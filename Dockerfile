@@ -16,4 +16,6 @@ RUN apt update -y && apt install xauth x11vnc -y
 
 COPY . .
 
-ENTRYPOINT [ "entry.sh" ]
+RUN chmod +x /app/entry.sh
+
+ENTRYPOINT [ "/app/entry.sh" ]
