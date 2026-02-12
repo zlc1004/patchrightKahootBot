@@ -14,4 +14,4 @@ RUN patchright install --with-deps
 
 COPY . .
 
-CMD python serve.py
+CMD xvfb-run python serve.py
