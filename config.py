@@ -1,29 +1,19 @@
+STEALTH_SCRIPT = """const defaultGetter=Object.getOwnPropertyDescriptor(Navigator.prototype,"webdriver").get;defaultGetter.apply(navigator),defaultGetter.toString(),Object.defineProperty(Navigator.prototype,"webdriver",{set:void 0,enumerable:!0,configurable:!0,get:new Proxy(defaultGetter,{apply:(e,t,r)=>(Reflect.apply(e,t,r),!1)})});const patchedGetter=Object.getOwnPropertyDescriptor(Navigator.prototype,"webdriver").get;patchedGetter.apply(navigator),patchedGetter.toString();"""
+
 class BaseGameConfig:
-    uri: str = ""  # The base URI for the game
-    code_input_xpath: str = ""  # The XPath for the game code input field
-    submit_code_button_selector: str = ""  # The selector for the submit code button
-    nickname_input_xpath: str = ""  # The XPath for the nickname input field
-    submit_nickname_button_selector: str = (
-        ""  # The selector for the submit nickname button
-    )
-    require_secondary_code: bool = False  # Whether a secondary code is required
-    secondary_code_input_xpath: str = ""  # The XPath for the secondary code input field
-    secondary_code_submit_button_selector: str = (
-        ""  # The selector for the secondary code submit button
-    )
-    excute_additional_js: bool = (
-        False  # Whether to execute additional JavaScript after joining
-    )
-    excute_additional_js_wait_xpath: str = (
-        ""  # The XPath to wait to be visible for before executing additional JS
-    )
-    excute_additional_js_code: str = (
-        ""  # Additional JavaScript to execute after joining
-    )
+    uri: str = ""
+    code_input_xpath: str = ""
+    submit_code_button_selector: str = ""
+    nickname_input_xpath: str = ""
+    submit_nickname_button_selector: str = ""
+    require_secondary_code: bool = False
+    secondary_code_input_xpath: str = ""
+    secondary_code_submit_button_selector: str = ""
+    excute_additional_js: bool = False
+    excute_additional_js_wait_xpath: str = ""
+    excute_additional_js_code: str = ""
     use_custom_run_client: bool = False
-    custom_run_client_custom_kargs: list[
-        dict
-    ] = []  # [{"prompt": "prompt to ask user when running", "key": "key"},...]
+    custom_run_client_custom_kargs: list[dict] = []
 
     @classmethod
     async def run_client(cls, code, browser, **kargs):
@@ -66,48 +56,11 @@ class MagicSchoolAI(BaseGameConfig):
     submit_nickname_button_selector = "xpath=/html/body/div[2]/div/button"
 
 
-def parse_json_cookies(cookie_data):
-    import json
-
-    if not cookie_data or cookie_data.strip().lower() == "none":
-        return None
-
-    try:
-        raw_cookies = json.loads(cookie_data)
-        cookies = []
-        for cookie in raw_cookies:
-            cookie_entry = {
-                "name": cookie.get("name", ""),
-                "value": cookie.get("value", ""),
-                "domain": cookie.get("domain", ""),
-                "path": cookie.get("path", "/"),
-                "secure": cookie.get("secure", False),
-            }
-            if cookie.get("expirationDate"):
-                cookie_entry["expires"] = cookie.get("expirationDate")
-            elif not cookie.get("session", False):
-                cookie_entry["expires"] = cookie.get("expirationDate")
-
-            if cookie.get("httpOnly"):
-                cookie_entry["httpOnly"] = cookie.get("httpOnly")
-            if cookie.get("sameSite"):
-                cookie_entry["sameSite"] = cookie.get("sameSite")
-
-            cookies.append(cookie_entry)
-        return cookies if cookies else None
-    except json.JSONDecodeError:
-        return None
-
-
 class GoogleForms(BaseGameConfig):
     uri = ""
     use_custom_run_client = True
     custom_run_client_custom_kargs = [
         {"prompt": "Enter Google Forms URL: ", "key": "form_url"},
-        {
-            "prompt": "Enter JSON cookies (send as one message or multiple, end with ]): ",
-            "key": "cookies",
-        },
     ]
 
     @classmethod
@@ -120,9 +73,6 @@ class GoogleForms(BaseGameConfig):
         if not form_url.startswith("http"):
             form_url = "https://" + form_url
 
-        cookie_data = kwargs.get("cookies", "")
-        cookies = parse_json_cookies(cookie_data)
-
         def generate_random_text(min_len=5, max_len=50):
             length = random.randint(min_len, max_len)
             return "".join(
@@ -132,11 +82,8 @@ class GoogleForms(BaseGameConfig):
         page = None
         try:
             page = await browser.new_page()
-            if cookies:
-                try:
-                    await page.context.add_cookies(cookies)
-                except Exception:
-                    pass
+            page.add_init_script(script=STEALTH_SCRIPT)
+            page = await browser.new_page()
             await page.goto(form_url)
             await page.wait_for_load_state("networkidle")
 

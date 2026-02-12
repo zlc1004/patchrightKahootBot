@@ -1,7 +1,10 @@
 import os
 import asyncio
+import hashlib
+import json
 import logging
 import time
+from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -16,25 +19,31 @@ from patchright.async_api import async_playwright
 import config
 import main
 
-# Setup logging
+STEALTH_SCRIPT = config.STEALTH_SCRIPT
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Env vars
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "").lower().replace("@", "")
 
-# Admin management
 admins = {ADMIN_USERNAME} if ADMIN_USERNAME else set()
-
-# Session storage
-# { session_id: { "browser": browser, "playwright": p, "game_name": str, "pin": str, "num_clients": int, "clients": list, "chat_id": int, "message_id": int, "last_update": float, "update_pending": bool } }
 sessions = {}
 
-# States
-SELECTING_GAME, ENTERING_CUSTOM_KWARGS, ENTERING_PIN, ENTERING_CLIENTS = range(4)
+(
+    SELECTING_GAME,
+    ENTERING_CUSTOM_KWARGS,
+    ENTERING_PIN,
+    ENTERING_CLIENTS,
+    SELECTING_STATE,
+    ENTERING_STATE_SHA256,
+    UPLOADING_STATE,
+) = range(7)
+
+STATES_DIR = "./states"
+os.makedirs(STATES_DIR, exist_ok=True)
 
 
 def is_admin(username):
@@ -44,7 +53,6 @@ def is_admin(username):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Start the global updater loop if not already running
     if not context.application.bot_data.get("updater_running"):
         context.application.bot_data["updater_running"] = True
         asyncio.create_task(status_updater_loop(context))
@@ -54,6 +62,62 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("You are not authorized to use this bot.")
         return ConversationHandler.END
 
+    keyboard = [
+        [InlineKeyboardButton("No", callback_data="no_state")],
+        [InlineKeyboardButton("Yes", callback_data="use_state")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "Do you want to use a saved authentication state?", reply_markup=reply_markup
+    )
+    return SELECTING_STATE
+
+
+async def state_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "no_state":
+        context.user_data["use_storage_state"] = False
+        context.user_data.pop("storage_state_path", None)
+
+        keyboard = []
+        for game_name in config.supported_games.keys():
+            keyboard.append(
+                [InlineKeyboardButton(game_name.capitalize(), callback_data=game_name)]
+            )
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "Please select a game:", reply_markup=reply_markup
+        )
+        return SELECTING_GAME
+
+    elif query.data == "use_state":
+        await query.edit_message_text("Enter the SHA256 hash of the saved state:")
+        return ENTERING_STATE_SHA256
+
+
+async def state_sha256_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sha256 = update.message.text.strip().lower()
+
+    state_path = os.path.join(STATES_DIR, f"{sha256}.json")
+
+    if not os.path.exists(state_path):
+        keyboard = [
+            [InlineKeyboardButton("No", callback_data="no_state")],
+            [InlineKeyboardButton("Yes", callback_data="use_state")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            f"State not found for hash: {sha256}\nDo you want to try again?",
+            reply_markup=reply_markup,
+        )
+        return SELECTING_STATE
+
+    context.user_data["use_storage_state"] = True
+    context.user_data["storage_state_path"] = state_path
+
     keyboard = []
     for game_name in config.supported_games.keys():
         keyboard.append(
@@ -61,8 +125,58 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Please select a game:", reply_markup=reply_markup)
+    await update.message.reply_text(
+        "State loaded! Please select a game:", reply_markup=reply_markup
+    )
     return SELECTING_GAME
+
+
+async def upload_state(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_admin(user.username):
+        await update.message.reply_text("You are not authorized to use this bot.")
+        return ConversationHandler.END
+
+    await update.message.reply_text("Please upload the JSON state file.")
+    return UPLOADING_STATE
+
+
+async def handle_state_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_admin(user.username):
+        await update.message.reply_text("You are not authorized to use this bot.")
+        return ConversationHandler.END
+
+    if not update.message.document:
+        await update.message.reply_text("Please upload a JSON file.")
+        return UPLOADING_STATE
+
+    document = update.message.document
+    if not document.file_name.endswith(".json"):
+        await update.message.reply_text("Please upload a JSON file.")
+        return UPLOADING_STATE
+
+    try:
+        file = await context.bot.get_file(document.file_id)
+        buffer = BytesIO()
+        await file.download_to_memory(buffer)
+        content = buffer.getvalue().decode("utf-8")
+        json.loads(content)
+        sha256 = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+        state_path = os.path.join(STATES_DIR, f"{sha256}.json")
+        with open(state_path, "w") as f:
+            f.write(content)
+
+        await update.message.reply_text(f"State saved successfully!\nSHA256: {sha256}")
+    except json.JSONDecodeError:
+        await update.message.reply_text("Error: Invalid JSON file.")
+        return UPLOADING_STATE
+    except Exception as e:
+        await update.message.reply_text(f"Error saving state: {e}")
+        return UPLOADING_STATE
+
+    return ConversationHandler.END
 
 
 async def game_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -96,28 +210,9 @@ async def game_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def custom_kwarg_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    current_kwarg = (
-        context.user_data["custom_kwargs_queue"][0]
-        if context.user_data["custom_kwargs_queue"]
-        else None
-    )
-    key = current_kwarg.get("key", "value") if current_kwarg else "value"
-    is_json = key == "cookies"
-
-    if is_json and context.user_data.get("custom_kwargs_pending"):
-        context.user_data["custom_kwargs_pending"] += " " + update.message.text
-    else:
-        context.user_data["custom_kwargs_pending"] = update.message.text
-
-    content = context.user_data["custom_kwargs_pending"]
-
-    if is_json and not content.strip().endswith("]"):
-        await update.message.reply_text("Waiting for complete JSON (end with ])...")
-        return ENTERING_CUSTOM_KWARGS
-
-    context.user_data["custom_kwargs"][key] = content
-    context.user_data["custom_kwargs_pending"] = None
-    context.user_data["custom_kwargs_queue"].pop(0)
+    kwarg = context.user_data["custom_kwargs_queue"].pop(0)
+    key = kwarg.get("key", "value")
+    context.user_data["custom_kwargs"][key] = update.message.text
 
     if context.user_data["custom_kwargs_queue"]:
         next_karg = context.user_data["custom_kwargs_queue"][0]
@@ -150,6 +245,10 @@ async def clients_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Launching {num_clients} clients for {game_choice.capitalize()}..."
     )
 
+    storage_state = None
+    if context.user_data.get("use_storage_state"):
+        storage_state = context.user_data.get("storage_state_path")
+
     asyncio.create_task(
         run_session(
             session_id,
@@ -159,6 +258,7 @@ async def clients_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update.effective_chat.id,
             context,
             custom_kwargs,
+            storage_state,
         )
     )
 
@@ -166,7 +266,14 @@ async def clients_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def run_session(
-    session_id, game_name, pin, num_clients, chat_id, context, custom_kwargs=None
+    session_id,
+    game_name,
+    pin,
+    num_clients,
+    chat_id,
+    context,
+    custom_kwargs=None,
+    storage_state=None,
 ):
     if custom_kwargs is None:
         custom_kwargs = {}
@@ -174,18 +281,26 @@ async def run_session(
 
     try:
         p = await async_playwright().start()
-        browser = await p.chromium.launch(
-            args=[
-                "--use-fake-ui-for-media-stream",
-                "--allow-http-screen-capture",
-                "--enable-usermedia-screen-capturing",
-                "--auto-select-desktop-capture-source=Entire screen",
-            ]
-        )
+        browser_args = [
+            "--use-fake-ui-for-media-stream",
+            "--allow-http-screen-capture",
+            "--enable-usermedia-screen-capturing",
+            "--auto-select-desktop-capture-source=Entire screen",
+        ]
+
+        if storage_state and os.path.exists(storage_state):
+            context_opts = {"storage_state": storage_state}
+        else:
+            context_opts = {}
+
+        browser = await p.chromium.launch(headless=False, args=browser_args)
+        browser_context = await browser.new_context(**context_opts)
+        # await browser_context.add_init_script(script=STEALTH_SCRIPT)
 
         session = {
             "playwright": p,
             "browser": browser,
+            "browser_context": browser_context,
             "game_name": game_name,
             "pin": pin,
             "num_clients": num_clients,
@@ -201,7 +316,6 @@ async def run_session(
         }
         sessions[session_id] = session
 
-        # Initial status message
         status_msg = await context.bot.send_message(
             chat_id=chat_id,
             text=get_status_text(session_id),
@@ -225,11 +339,9 @@ async def run_session(
 
             await update_status_message(session_id, context)
 
-        # Launch clients concurrently
         for i in range(num_clients):
             asyncio.create_task(run_one_client(i))
 
-        # Auto-close task in 10 minutes
         asyncio.create_task(auto_close_session(session_id, 600, context))
 
     except Exception as e:
@@ -300,13 +412,10 @@ async def update_status_message(session_id, context):
     session = sessions[session_id]
 
     current_time = time.time()
-    # If we are within the 750ms window since the last update
     if current_time - session["last_update"] < 0.75:
-        # Just mark that there is a newer state to be sent
         session["update_pending"] = True
         return
 
-    # Otherwise, update immediately
     await _perform_update(session_id, context)
 
 
@@ -331,7 +440,6 @@ async def _perform_update(session_id, context):
 
 
 async def status_updater_loop(context):
-    """Global loop to check all sessions for pending updates every 750ms."""
     while True:
         await asyncio.sleep(0.75)
         for session_id in list(sessions.keys()):
@@ -376,8 +484,17 @@ def main_bot():
     application = Application.builder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            CommandHandler("uploadstate", upload_state),
+        ],
         states={
+            SELECTING_STATE: [
+                CallbackQueryHandler(state_selection),
+            ],
+            ENTERING_STATE_SHA256: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, state_sha256_entered),
+            ],
             SELECTING_GAME: [CallbackQueryHandler(game_selected)],
             ENTERING_CUSTOM_KWARGS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, custom_kwarg_entered)
@@ -387,6 +504,9 @@ def main_bot():
             ],
             ENTERING_CLIENTS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, clients_entered)
+            ],
+            UPLOADING_STATE: [
+                MessageHandler(filters.ALL & ~filters.COMMAND, handle_state_upload),
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],

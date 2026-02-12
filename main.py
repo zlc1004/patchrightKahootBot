@@ -7,6 +7,7 @@ import config
 
 game = config.BaseGameConfig
 
+STEALTH_SCRIPT = config.STEALTH_SCRIPT
 
 def generate_hex_string(length):
     return "".join(random.choices(string.hexdigits, k=length)).lower()
@@ -18,6 +19,8 @@ async def run_client(join_code, browser, game_config=None):
         game_config = game
     page = None
     try:
+        page = await browser.new_page()
+        page.add_init_script(script=STEALTH_SCRIPT)
         page = await browser.new_page()
         await page.goto(game_config.uri)
 
