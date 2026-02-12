@@ -10,3 +10,5 @@ services:
     restart: always
     volumes:
       - ./states:/app/states
+    ports:
+      - 15901:5900

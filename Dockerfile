@@ -12,8 +12,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 RUN patchright install --with-deps
 
-RUN apt update -y && apt install xauth -y
+RUN apt update -y && apt install xauth x11vnc -y
 
 COPY . .
 
-CMD xvfb-run python serve.py
+ENTRYPOINT [ "entry.sh" ]
