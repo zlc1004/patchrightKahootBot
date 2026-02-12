@@ -12,7 +12,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 RUN patchright install --with-deps
 
-RUN apt update && apt install xauth
+RUN apt update -y && apt install xauth -y
 
 COPY . .
 
