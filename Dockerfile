@@ -12,6 +12,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 RUN patchright install --with-deps
 
+RUN sudo apt-get update && sudo apt-get install xauth
+
 COPY . .
 
 CMD xvfb-run python serve.py
